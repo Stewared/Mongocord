@@ -1,18 +1,17 @@
 <img src="./assets/separator.svg" width="2000">
 <br>
-<br>
 <p align="center">
   <img src="./assets/Mongocord.png" alt="Mongocord" width="125" />
 </p>
 
 # Mongocord - A Discord MongoDB Client
 
-A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass, Mongocord supports managing your local or remote atlas databases.
+A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass, Mongocord supports managing your local or remote Atlas databases.
 
 <img src="./assets/separator.svg" width="2000">
 
 
-## What it does
+## Features
 
 - `/find`
   - Opens the standard modal with projection, filter, and sort abilities.
