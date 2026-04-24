@@ -1,13 +1,7 @@
-<div style="display:flex; width:100%; height:25px;">
-  <div style="flex:1; height:4px; background:#0f3d0f;"></div>
-  <div style="flex:1; height:4px; background:#145214;"></div>
-  <div style="flex:1; height:4px; background:#1f7a1f;"></div>
-  <div style="flex:1; height:4px; background:#2fbf2f;"></div>
-  <div style="flex:1; height:4px; background:#7CFC00;"></div>
-</div>
+![](./assets/separator.svg)
 
 <p align="center">
-  <img src="./Mongocord.png" alt="Mongocord" width="125" />
+  <img src="./assets/Mongocord.png" alt="Mongocord" width="125" />
 </p>
 
 # Mongocord - A Discord MongoDB Client
