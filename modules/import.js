@@ -1,6 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { getDatabase } = require("../lib/mongo");
-const { requireDatabaseAdmin } = require("../lib/access");
 const { addPrivateOption, createStatusEmbed } = require("../lib/discordViews");
 const { respond } = require("../lib/interactions");
 const { listCollectionNames, listDatabaseNames } = require("../lib/mongoAdmin");
@@ -91,10 +90,6 @@ module.exports = {
     },
 
     async execute(interaction) {
-        if (!await requireDatabaseAdmin(interaction)) {
-            return;
-        }
-
         const databaseName = interaction.options.getString("database", true);
         const collectionName = interaction.options.getString("collection", true);
         const type = interaction.options.getString("type", true);

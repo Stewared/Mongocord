@@ -16,16 +16,6 @@ async function syncCommands() {
     const commands = await getCommandPayloads();
     const rest = new REST({ version: "10" }).setToken(env.token);
 
-    // try {
-    //     await rest.put(
-    //         Routes.applicationGuildCommands(env.clientId, "983074750165299250"),
-    //         { body: [] }
-    //     );
-    //     console.log(`Cleared commands for guild ${"983074750165299250"}`);
-    // } catch (err) {
-    //     console.error(err);
-    // }
-
     await rest.put(
         Routes.applicationCommands(env.clientId),
         { body: commands }

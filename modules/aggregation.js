@@ -13,7 +13,7 @@ const {
     TextInputBuilder,
     TextInputStyle
 } = require("discord.js");
-const { isDevAdmin, replyPrivately, requireDatabaseAdmin } = require("../lib/access");
+const { isDevAdmin, replyPrivately } = require("../lib/access");
 const { makeCustomId, parseCustomId } = require("../lib/customIds");
 const {
     createComponentsV2Payload,
@@ -186,7 +186,7 @@ module.exports = {
         }
 
         if (["edit", "run", "delete"].includes(subcommand) && focused.name === "name") {
-            const pipelines = await listSavedPipelines(interaction.user.id, focused.value);
+            const pipelines = await listSavedPipelines(focused.value);
             await interaction.respond(
                 pipelines.map(entry => ({
                     name: shorten(`${entry.name} (${entry.database}.${entry.collection})`, 100),
@@ -200,10 +200,6 @@ module.exports = {
     },
 
     async execute(interaction) {
-        if (!await requireDatabaseAdmin(interaction)) {
-            return;
-        }
-
         const subcommand = interaction.options.getSubcommand();
         const isPrivate = interaction.options.getBoolean("private") ?? false;
 
@@ -222,7 +218,7 @@ module.exports = {
 
         if (subcommand === "edit" || subcommand === "run") {
             const name = interaction.options.getString("name", true);
-            const saved = await getSavedPipeline(interaction.user.id, name);
+            const saved = await getSavedPipeline(name);
             if (!saved) {
                 await interaction.reply(withSafeMentions({
                     content: `No saved pipeline named "${name}" was found.`,
@@ -238,7 +234,7 @@ module.exports = {
 
         if (subcommand === "delete") {
             const name = interaction.options.getString("name", true);
-            const result = await deleteSavedPipeline(interaction.user.id, name);
+            const result = await deleteSavedPipeline(name);
             await respond(interaction, {
                 embeds: [
                     createStatusEmbed({
@@ -372,7 +368,7 @@ module.exports = {
             }
 
             const file = new AttachmentBuilder(
-                Buffer.from(toExtendedJson(item.document, false), "utf8"),
+                Buffer.from(toExtendedJson(item.document, true), "utf8"),
                 { name: `${session.name}-result-${value}.json` }
             );
             await interaction.reply(withSafeMentions({
@@ -478,13 +474,13 @@ async function createOrUpdatePipeline(userId, payload, isPrivate) {
         enabled: stage.enabled !== false
     }));
 
-    await upsertSavedPipeline(userId, payload.name, {
+    await upsertSavedPipeline(payload.name, {
         name: payload.name,
         database: payload.database,
         collection: payload.collection,
         pipelineSource: formatPipelineForExport(normalizedStages),
         stages: normalizedStages
-    });
+    }, userId);
 
     return {
         ownerId: userId,
@@ -559,7 +555,7 @@ async function buildAggregationEditorPayload(sessionId, session) {
     ];
 
     if (session.lastResultNotice) {
-        header.push(`- Notice: ${session.lastResultNotice}`);
+        header.push(`- Last Change: ${session.lastResultNotice}`);
         session.lastResultNotice = null;
     }
 
@@ -674,7 +670,7 @@ async function buildAggregationResultsPayload(sessionId, session) {
     ];
 
     if (session.lastResultNotice) {
-        header.push(`- Notice: ${session.lastResultNotice}`);
+        header.push(`- Last Change: ${session.lastResultNotice}`);
         session.lastResultNotice = null;
     }
 
@@ -730,18 +726,20 @@ async function buildAggregationResultsPayload(sessionId, session) {
                         .setStyle(ButtonStyle.Secondary)
                         .setDisabled(result.page <= 0),
                     new ButtonBuilder()
-                        .setCustomId(makeCustomId(AGG_PREFIX, sessionId, "back"))
-                        .setLabel("Back")
-                        .setStyle(ButtonStyle.Secondary),
-                    new ButtonBuilder()
-                        .setCustomId(makeCustomId(AGG_PREFIX, sessionId, "run"))
-                        .setLabel("Rerun")
-                        .setStyle(ButtonStyle.Success),
-                    new ButtonBuilder()
                         .setCustomId(makeCustomId(AGG_PREFIX, sessionId, "page", "next"))
                         .setLabel("Next")
                         .setStyle(ButtonStyle.Secondary)
                         .setDisabled(!result.hasNext)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(makeCustomId(AGG_PREFIX, sessionId, "back"))
+                        .setLabel("Edit")
+                        .setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder()
+                        .setCustomId(makeCustomId(AGG_PREFIX, sessionId, "run"))
+                        .setLabel("Rerun")
+                        .setStyle(ButtonStyle.Success)
                 )
             ]
         }),
@@ -761,15 +759,21 @@ async function fetchAggregationResultsPage(session) {
 
     let pageSize = session.resultPageSize;
     if (!pageSize) {
-        const sample = await collection.aggregate(pipeline).limit(1).next();
-        pageSize = Math.min(pickResultPageSize(sample || {}), MAX_RESULTS_PER_PAGE);
+        // Use a dedicated pipeline for sampling so limit() never mutates the
+        // actual pipeline used for page results.
+        const samplePipeline = [...pipeline, { $limit: 1 }];
+        const sample = await collection.aggregate(samplePipeline).next();
+        pageSize = Math.max(1, Math.min(pickResultPageSize(sample || {}), MAX_RESULTS_PER_PAGE));
     }
 
     const page = Math.max(0, session.resultPage || 0);
-    const results = await collection.aggregate(pipeline)
-        .skip(page * pageSize)
-        .limit(pageSize + 1)
-        .toArray();
+    const pagePipeline = [...pipeline];
+    if (page > 0) {
+        pagePipeline.push({ $skip: page * pageSize });
+    }
+    pagePipeline.push({ $limit: pageSize + 1 });
+
+    const results = await collection.aggregate(pagePipeline).toArray();
 
     const hasNext = results.length > pageSize;
     if (hasNext) {
@@ -874,7 +878,7 @@ async function handleStageModalSubmit(interaction) {
         expect: "object",
         label: "aggregation stage"
     });
-    const serialized = toExtendedJson(stage, false);
+    const serialized = toExtendedJson(stage, true);
 
     if (modalSession.mode === "add") {
         aggregationSession.stages.push({
@@ -939,7 +943,6 @@ async function handleMoveModalSubmit(interaction) {
     aggregationSession.editorPage = Math.floor((target - 1) / EDITOR_PAGE_SIZE);
 
     await persistAggregationSession(interaction.user.id, aggregationSession);
-    aggregationSession.lastResultNotice = `Moved stage ${modalSession.index + 1} to ${target}.`;
 
     const { payload, nextSession } = await buildAggregationPayload(modalSession.aggregationSessionId, aggregationSession);
     setSessionData(modalSession.aggregationSessionId, nextSession);
@@ -1012,7 +1015,7 @@ function parsePipelineStages(sourceText) {
     });
 
     return pipeline.map(stage => ({
-        source: toExtendedJson(stage, false),
+        source: toExtendedJson(stage, true),
         enabled: true
     }));
 }
@@ -1040,18 +1043,52 @@ function getStageName(source) {
 }
 
 function formatPipelineForExport(stages) {
-    const parsed = stages.map(stage => parseStageSafely(stage.source));
-    return toExtendedJson(parsed, false);
+    const lines = ["["];
+
+    for (let index = 0; index < stages.length; index += 1) {
+        const stage = stages[index];
+        const parsedStage = parseStageSafely(stage.source);
+        const formattedStage = formatStageForExport(parsedStage).split("\n");
+        const hasNextEnabled = stages.slice(index + 1).some(nextStage => nextStage.enabled !== false);
+
+        if (stage.enabled === false) {
+            formattedStage.forEach((line, lineIndex) => {
+                const suffix = lineIndex === formattedStage.length - 1 && hasNextEnabled ? "," : "";
+                lines.push(`  // ${line}${suffix}`);
+            });
+            continue;
+        }
+
+        formattedStage.forEach((line, lineIndex) => {
+            const suffix = lineIndex === formattedStage.length - 1 && hasNextEnabled ? "," : "";
+            lines.push(`  ${line}${suffix}`);
+        });
+    }
+
+    lines.push("]");
+    return lines.join("\n");
+}
+
+function formatStageForExport(stage) {
+    const entries = Object.entries(stage || {});
+    if (entries.length === 1) {
+        const [key, value] = entries[0];
+        if (key.startsWith("$") && (value === null || typeof value !== "object")) {
+            return `{ ${JSON.stringify(key)}: ${toExtendedJson(value, true)} }`;
+        }
+    }
+
+    return toExtendedJson(stage, true);
 }
 
 async function persistAggregationSession(userId, session) {
-    await upsertSavedPipeline(userId, session.name, {
+    await upsertSavedPipeline(session.name, {
         name: session.name,
         database: session.database,
         collection: session.collection,
         pipelineSource: formatPipelineForExport(session.stages),
         stages: session.stages
-    });
+    }, userId);
 }
 
 function canUseSession(interaction, session) {
@@ -1088,18 +1125,43 @@ function createModalFileUploadLabel({
         .setFileUploadComponent(
             new FileUploadBuilder()
                 .setCustomId(customId)
+                .setRequired(false)
+                .setMinValues(0)
+                .setMaxValues(1)
         );
 }
 
 async function getModalSourceText(interaction, textFieldId, uploadFieldId, label) {
-    const uploadedFiles = interaction.fields.getUploadedFiles(uploadFieldId);
-    if (uploadedFiles?.size) {
-        const attachment = uploadedFiles.first();
-        const response = await fetch(attachment.url);
-        return response.text();
+    let uploadedFiles = null;
+    try {
+        uploadedFiles = interaction.fields.getUploadedFiles(uploadFieldId);
+    }
+    catch {
+        uploadedFiles = null;
     }
 
-    const textValue = interaction.fields.getTextInputValue(textFieldId)?.trim();
+    if (uploadedFiles && uploadedFiles.size) {
+        const attachment = uploadedFiles.first();
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+            throw new Error(`Failed to download uploaded ${label} file.`);
+        }
+
+        const source = await response.text();
+        if (source.trim()) {
+            return source;
+        }
+    }
+
+    let textValue = "";
+    try {
+        textValue = interaction.fields.getTextInputValue(textFieldId) || "";
+    }
+    catch {
+        textValue = "";
+    }
+
+    textValue = textValue.trim();
     if (textValue) {
         return textValue;
     }

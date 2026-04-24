@@ -6,9 +6,9 @@ const { syncCommands } = require("./launchCommands");
 const { loadModules } = require("./launchModules");
 const { ensureStateIndexes } = require("./lib/state");
 const { getMongoClient } = require("./lib/mongo");
-const { replyPrivately } = require("./lib/access");
+const { isDatabaseAdmin, replyPrivately } = require("./lib/access");
 
-const THEME_GREEN = 0xb7e4c7;
+const THEME_GREEN = 0x66ff99;
 global.THEME_GREEN = THEME_GREEN;
 
 function shouldDeferCommand(moduleDefinition) {
@@ -22,6 +22,8 @@ function matchesCustomId(subscription, customId) {
 
     return subscription instanceof RegExp && subscription.test(customId);
 }
+
+const ACCESS_DENIED_MESSAGE = "Sorry, you can't use this.";
 
 async function main() {
     const modules = await loadModules();
@@ -66,6 +68,11 @@ async function main() {
             if (interaction.isAutocomplete()) {
                 const moduleDefinition = commandModules.get(interaction.commandName);
                 if (moduleDefinition?.autocomplete) {
+                    if (!await isDatabaseAdmin(interaction.user.id)) {
+                        await interaction.respond([]);
+                        return;
+                    }
+
                     await moduleDefinition.autocomplete(interaction);
                 }
                 return;
@@ -74,6 +81,11 @@ async function main() {
             if (interaction.isChatInputCommand()) {
                 const moduleDefinition = commandModules.get(interaction.commandName);
                 if (!moduleDefinition?.execute) {
+                    return;
+                }
+
+                if (!await isDatabaseAdmin(interaction.user.id)) {
+                    await replyPrivately(interaction, ACCESS_DENIED_MESSAGE);
                     return;
                 }
 
@@ -93,6 +105,11 @@ async function main() {
                 });
 
                 if (!matchingModules.length) {
+                    return;
+                }
+
+                if (!await isDatabaseAdmin(interaction.user.id)) {
+                    await replyPrivately(interaction, ACCESS_DENIED_MESSAGE);
                     return;
                 }
 

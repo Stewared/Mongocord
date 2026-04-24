@@ -6,7 +6,7 @@ const {
     TextInputStyle
 } = require("discord.js");
 const { getDatabase } = require("../lib/mongo");
-const { replyPrivately, requireDatabaseAdmin } = require("../lib/access");
+const { replyPrivately } = require("../lib/access");
 const { makeCustomId, parseCustomId } = require("../lib/customIds");
 const { addPrivateOption, createStatusEmbed, shorten, withSafeMentions } = require("../lib/discordViews");
 const { respond } = require("../lib/interactions");
@@ -113,10 +113,6 @@ module.exports = {
     },
 
     async execute(interaction) {
-        if (!await requireDatabaseAdmin(interaction)) {
-            return;
-        }
-
         const subcommand = interaction.options.getSubcommand();
         const databaseName = interaction.options.getString("database", true);
         const isPrivate = interaction.options.getBoolean("private") ?? false;

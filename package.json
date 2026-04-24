@@ -9,7 +9,11 @@
   },
   "scripts": {
     "start": "node index.js",
-    "register": "node launchCommands.js"
+    "register": "node launchCommands.js",
+    "setup": "node setup.js",
+    "pm2:start": "pm2 startOrRestart ecosystem.config.js --only mongocord",
+    "pm2:stop": "pm2 stop mongocord",
+    "pm2:status": "pm2 status mongocord"
   },
   "dependencies": {
     "discord.js": "^14.26.2",

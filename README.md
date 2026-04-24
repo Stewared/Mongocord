@@ -6,7 +6,12 @@
 
 # Mongocord - A Discord MongoDB Client
 
-A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass, Mongocord supports managing your local or remote Atlas databases.
+A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass, Mongocord supports managing your local or remote Atlas databases cross-platform entirely from Discord.
+
+[![Support Server](https://img.shields.io/discord/983074750165299250?label=Discord&logo=discord&style=for-the-badge)](https://discord.gg/k3yVkrrvez)
+&nbsp;
+[![Donate](https://img.shields.io/badge/Donate-PayPal-blue?style=for-the-badge&logo=paypal)](https://www.paypal.com/donate?business=kestron@kestron.software&no_recurring=0&item_name=KestronProgramming&item_number=Stewbot)
+
 
 <img src="./assets/separator.svg" width="2000">
 
@@ -18,7 +23,7 @@ A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass,
   - Results are displayed like MongoDB and can be easily edited.
 
 - `/aggregation create|edit|run|delete|import`
-  - Saves pipelines per user.
+  - Saves pipelines globally for all users.
   - Shows a paginated stage editor with edit, enable/disable, move, import, and export controls.
   - Runs the pipeline inside Discord and shows a paginated read-only result view with downloads.
 
@@ -35,34 +40,49 @@ A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass,
   - `confirmations` by default, Mongocord will confirm before editing or deleting.
   - `admin_add`, `admin_remove`, and `admin_list` manage who can use Mongocord.
 
+  
 <img src="./assets/separator.svg" width="2000">
 
-## Setup
+## Demo:
 
-1. Copy `example.env.jsonc` to `env.json`.
-2. Fill in:
-   - `token`
-   - `clientId`
-   - `mongoUri`
-   - `devAdmins`
-3. Install dependencies:
+|  |  |  |
+|--|--|--|
+| ![](./assets/queryModal.png) | ![](./assets/queryResults.png) | ![](./assets/queryResultEdit.png) |
+| ![](./assets/deletionConfirmation.png) | ![](./assets/aggregationEditor.png) | ![](./assets/aggregationFieldEditor.png) |
+| ![](./assets/aggregationResults.png) | ![](./assets/collectionListing.png) | ![](./assets/collectionDeletion.png) |
+
+<sup>Examples data shown taken from [InfiniMii](https://github.com/Stewared/InfiniMii) development database.</sup>
+
+
+<img src="./assets/separator.svg" width="2000">
+
+## Installation & Setup
+
+1. Create a discord bot account at https://discord.com/developers/applications. Search for tutorials online for this step if needed.
+
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-4. Register commands:
+2. Run the interactive setup:
 
 ```bash
-npm run register
+npm run setup
 ```
+This walks you through creating `env.json` and configuring PM2 to start Mongocord to run at boot.
 
-5. Start the bot:
+3. The bot is setup. See this reference list for pm2 commands:
+- Start/restart: `npm run pm2:start`
+- Stop: `npm run pm2:stop`
+- Status: `npm run pm2:status`
+- Logs: `pm2 logs mongocord`
+
+If you change PM2 process configuration and want it persisted across reboots, run:
 
 ```bash
-npm start
+pm2 save
 ```
 
 <img src="./assets/separator.svg" width="2000">
-
-## Demo:

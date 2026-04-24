@@ -12,7 +12,7 @@ const {
     TextInputStyle
 } = require("discord.js");
 const client = require("../client");
-const { isDevAdmin, replyPrivately, requireDatabaseAdmin } = require("../lib/access");
+const { isDevAdmin, replyPrivately } = require("../lib/access");
 const { makeCustomId, parseCustomId } = require("../lib/customIds");
 const {
     createComponentsV2Payload,
@@ -182,10 +182,6 @@ module.exports = {
     },
 
     async execute(interaction) {
-        if (!await requireDatabaseAdmin(interaction)) {
-            return;
-        }
-
         const subcommand = interaction.options.getSubcommand();
         const isPrivate = interaction.options.getBoolean("private") ?? false;
 
@@ -627,9 +623,9 @@ async function handleEditConfirmationButton(interaction) {
 
 async function handleFindDeleteModalSubmit(interaction) {
     const [, sessionId] = parseCustomId(interaction.customId);
-    const deleteSession = getSession(sessionId, "findDelete");
+    const deleteRequest = getSession(sessionId, "findDelete");
 
-    if (!deleteSession) {
+    if (!deleteRequest) {
         await interaction.reply(withSafeMentions({
             content: "That delete confirmation expired.",
             ephemeral: true
@@ -637,7 +633,7 @@ async function handleFindDeleteModalSubmit(interaction) {
         return;
     }
 
-    if (!canUseSession(interaction, deleteSession)) {
+    if (!canUseSession(interaction, deleteRequest)) {
         await replyPrivately(interaction, "Only the original requester can delete that document.");
         return;
     }
@@ -648,17 +644,18 @@ async function handleFindDeleteModalSubmit(interaction) {
             content: "Delete cancelled because the confirmation text did not match `DELETE`.",
             ephemeral: true
         }));
+        deleteSession(sessionId);
         return;
     }
 
-    const resultSession = getSession(deleteSession.resultSessionId, "findResults");
+    const resultSession = getSession(deleteRequest.resultSessionId, "findResults");
     if (resultSession) {
-        await deleteDocumentById(resultSession, deleteSession.idSource);
-        await tryRefreshStoredFindMessage(deleteSession.resultSessionId);
+        await deleteDocumentById(resultSession, deleteRequest.idSource);
+        await tryRefreshStoredFindMessage(deleteRequest.resultSessionId);
     }
 
     await interaction.reply(withSafeMentions({
-        content: `Deleted document \`${deleteSession.idLabel}\`. Use Refresh if you were looking at an ephemeral result page.`,
+        content: `Deleted document \`${deleteRequest.idLabel}\`. Use Refresh if you were looking at an ephemeral result page.`,
         ephemeral: true
     }));
 

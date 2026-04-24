@@ -6,7 +6,7 @@ const {
     TextInputBuilder,
     TextInputStyle
 } = require("discord.js");
-const { replyPrivately, requireDatabaseAdmin } = require("../lib/access");
+const { replyPrivately } = require("../lib/access");
 const { makeCustomId, parseCustomId } = require("../lib/customIds");
 const { addPrivateOption, createStatusEmbed, shorten, withSafeMentions } = require("../lib/discordViews");
 const { respond } = require("../lib/interactions");
@@ -78,10 +78,6 @@ module.exports = {
     },
 
     async execute(interaction) {
-        if (!await requireDatabaseAdmin(interaction)) {
-            return;
-        }
-
         const modalSessionId = createSession("exportModal", {
             ownerId: interaction.user.id,
             database: interaction.options.getString("database", true),
