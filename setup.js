@@ -120,9 +120,27 @@ function runCommand(command, args, inheritOutput = true) {
     });
 }
 
+function getLocalPm2Command() {
+    return path.join(__dirname, "node_modules", ".bin", process.platform === "win32" ? "pm2.cmd" : "pm2");
+}
+
+function getPm2Command() {
+    const globalResult = runCommand("pm2", ["-v"], false);
+    if (globalResult.status === 0) {
+        return "pm2";
+    }
+
+    const localCommand = getLocalPm2Command();
+    if (!fs.existsSync(localCommand)) {
+        return null;
+    }
+
+    const localResult = runCommand(localCommand, ["-v"], false);
+    return localResult.status === 0 ? localCommand : null;
+}
+
 function hasPm2() {
-    const result = runCommand("pm2", ["-v"], false);
-    return result.status === 0;
+    return Boolean(getPm2Command());
 }
 
 function commandExists(command) {
@@ -153,7 +171,7 @@ function getPm2StartupCommand() {
     return null;
 }
 
-function configurePm2StartupForBoot() {
+function configurePm2StartupForBoot(pm2Command) {
     if (process.platform === "win32") {
         console.log("Windows detected. Configuring startup with pm2-windows-startup.");
 
@@ -183,7 +201,7 @@ function configurePm2StartupForBoot() {
         return true;
     }
 
-    const startupResult = runCommand("pm2", ["startup"]);
+    const startupResult = runCommand(pm2Command, ["startup"]);
     if (startupResult.status !== 0) {
         console.log("pm2 startup did not complete. Try running it in an elevated shell.");
         return false;
@@ -198,9 +216,53 @@ function registerSlashCommands() {
     return result.status === 0;
 }
 
+async function installPm2(rl) {
+    const installResult = runCommand("npm", ["install", "-g", "pm2"]);
+    let pm2Command = getPm2Command();
+    if (installResult.status === 0 && pm2Command) {
+        return pm2Command;
+    }
+
+    if (process.platform !== "win32") {
+        if (commandExists("sudo")) {
+            const shouldInstallWithSudo = await askYesNo(
+                rl,
+                "Global install failed. Retry with sudo (will prompt for your password)",
+                true
+            );
+
+            if (shouldInstallWithSudo) {
+                const sudoInstallResult = runCommand("sudo", ["npm", "install", "-g", "pm2"]);
+                pm2Command = getPm2Command();
+                if (sudoInstallResult.status === 0 && pm2Command) {
+                    return pm2Command;
+                }
+            }
+        }
+
+        const shouldInstallLocal = await askYesNo(
+            rl,
+            "Install PM2 locally in this project instead (no root required)",
+            true
+        );
+
+        if (shouldInstallLocal) {
+            const localInstallResult = runCommand("npm", ["install", "--no-save", "pm2"]);
+            pm2Command = getPm2Command();
+            if (localInstallResult.status === 0 && pm2Command) {
+                console.log("PM2 installed locally. Use npm scripts or npx pm2 for future PM2 commands.");
+                return pm2Command;
+            }
+        }
+    }
+
+    return null;
+}
+
 async function configurePm2(rl) {
     const summary = {
         usedPm2: false,
+        available: false,
         started: false,
         startupEnabled: false
     };
@@ -211,8 +273,9 @@ async function configurePm2(rl) {
     }
 
     summary.usedPm2 = true;
+    let pm2Command = getPm2Command();
 
-    if (!hasPm2()) {
+    if (!pm2Command) {
         console.log("PM2 was not found in PATH.");
         const shouldInstall = await askYesNo(rl, "Install PM2 globally with npm install -g pm2", true);
 
@@ -221,18 +284,20 @@ async function configurePm2(rl) {
             return summary;
         }
 
-        const installResult = runCommand("npm", ["install", "-g", "pm2"]);
-        if (installResult.status !== 0 || !hasPm2()) {
+        pm2Command = await installPm2(rl);
+        if (!pm2Command) {
             console.log("Could not install PM2 automatically. Install it manually and rerun setup if needed.");
             return summary;
         }
     }
 
+    summary.available = true;
+
     const shouldStart = await askYesNo(rl, "Start or restart Mongocord in PM2 now", true);
     if (shouldStart) {
-        let startResult = runCommand("pm2", ["startOrRestart", ECOSYSTEM_FILE_PATH, "--only", PM2_APP_NAME]);
+        let startResult = runCommand(pm2Command, ["startOrRestart", ECOSYSTEM_FILE_PATH, "--only", PM2_APP_NAME]);
         if (startResult.status !== 0) {
-            startResult = runCommand("pm2", ["start", ECOSYSTEM_FILE_PATH, "--only", PM2_APP_NAME]);
+            startResult = runCommand(pm2Command, ["start", ECOSYSTEM_FILE_PATH, "--only", PM2_APP_NAME]);
         }
 
         if (startResult.status !== 0) {
@@ -250,9 +315,9 @@ async function configurePm2(rl) {
     );
 
     if (shouldEnableStartup) {
-        summary.startupEnabled = configurePm2StartupForBoot();
+        summary.startupEnabled = configurePm2StartupForBoot(pm2Command);
 
-        const saveResult = runCommand("pm2", ["save"]);
+        const saveResult = runCommand(pm2Command, ["save"]);
         if (saveResult.status !== 0) {
             console.log("pm2 save failed. Run pm2 save manually after PM2 is configured.");
         }
@@ -335,8 +400,11 @@ async function main() {
         if (pm2Summary.started) {
             console.log("Mongocord is running under PM2.");
         }
-        else if (pm2Summary.usedPm2) {
+        else if (pm2Summary.available) {
             console.log("PM2 is configured, but startup was not triggered in this run.");
+        }
+        else if (pm2Summary.usedPm2) {
+            console.log("PM2 setup was requested, but PM2 is still not installed/configured.");
         }
         else {
             console.log("PM2 setup was skipped.");
