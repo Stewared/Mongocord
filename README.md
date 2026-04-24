@@ -47,9 +47,9 @@ A Discord Bot MongoDB client. Designed to function similarly to MongoDB Compass,
 
 |  |  |  |
 |--|--|--|
-| ![](./assets/queryModal.png) | ![](./assets/queryResults.png) | ![](./assets/queryResultEdit.png) |
-| ![](./assets/deletionConfirmation.png) | ![](./assets/aggregationEditor.png) | ![](./assets/aggregationFieldEditor.png) |
-| ![](./assets/aggregationResults.png) | ![](./assets/collectionListing.png) | ![](./assets/collectionDeletion.png) |
+| <div align="center">Standard queries</div> ![](./assets/queryModal.png) | <div align="center">Query results</div> ![](./assets/queryResults.png) | <div align="center">Editing item</div> ![](./assets/queryResultEdit.png) |
+| <div align="center">Deleting item</div> ![](./assets/deletionConfirmation.png) | <div align="center">Aggrigation query editor</div> ![](./assets/aggregationEditor.png) | <div align="center">Aggregation feild editor</div> ![](./assets/aggregationFieldEditor.png) |
+| <div align="center">Aggregation results</div> ![](./assets/aggregationResults.png) | <div align="center">Collection listing</div> ![](./assets/collectionListing.png) | <div align="center">Collection deletion</div> ![](./assets/collectionDeletion.png) |
 
 <sup>Examples data shown taken from [InfiniMii](https://github.com/Stewared/InfiniMii) development database.</sup>
 
