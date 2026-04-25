@@ -1,4 +1,7 @@
 const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     LabelBuilder,
     ModalBuilder,
     SlashCommandBuilder,
@@ -10,10 +13,11 @@ const { replyPrivately } = require("../lib/access");
 const { makeCustomId, parseCustomId } = require("../lib/customIds");
 const { addPrivateOption, createStatusEmbed, shorten, withSafeMentions } = require("../lib/discordViews");
 const { respond } = require("../lib/interactions");
-const { listCollectionNames, listDatabaseNames } = require("../lib/mongoAdmin");
+const { listCollectionNames, listCollectionsWithDocumentCounts, listDatabaseNames } = require("../lib/mongoAdmin");
 const { createSession, deleteSession, getSession } = require("../lib/sessions");
 
 const COLLECTION_DELETE_MODAL_PREFIX = "collectionDeleteModal";
+const COLLECTION_LIST_REFRESH_PREFIX = "collectionListRefresh";
 
 function addDatabaseOption(option) {
     return option
@@ -81,7 +85,7 @@ module.exports = {
             )
     },
 
-    subscribedCustomIds: [/^collectionDeleteModal\|/],
+    subscribedCustomIds: [/^collectionDeleteModal\|/, /^collectionListRefresh\|/],
 
     async autocomplete(interaction) {
         const focused = interaction.options.getFocused(true);
@@ -163,22 +167,38 @@ module.exports = {
         }
 
         if (subcommand === "list") {
-            const names = await listCollectionNames(databaseName);
+            const sessionId = createSession("collectionListView", {
+                ownerId: interaction.user.id,
+                database: databaseName,
+                private: isPrivate
+            });
+
             await respond(interaction, {
-                embeds: [
-                    createStatusEmbed({
-                        title: `Collections in ${databaseName}`,
-                        description: names.length
-                            ? names.map(name => `- \`${name}\``).join("\n")
-                            : "No visible collections were found."
-                    })
-                ],
+                ...await buildCollectionListPayload(databaseName, sessionId),
                 ephemeral: isPrivate
             });
         }
     },
 
     async onbutton(interaction) {
+        if (interaction.isButton() && interaction.customId.startsWith(`${COLLECTION_LIST_REFRESH_PREFIX}|`)) {
+            const [, sessionId] = parseCustomId(interaction.customId);
+            const session = getSession(sessionId, "collectionListView");
+
+            if (!session) {
+                await replyPrivately(interaction, "That collection list view expired. Run /collection list again.");
+                return;
+            }
+
+            if (session.ownerId !== interaction.user.id) {
+                await replyPrivately(interaction, "Only the original requester can refresh this collection list.");
+                return;
+            }
+
+            await interaction.update(await buildCollectionListPayload(session.database, sessionId));
+            return;
+        }
+
         if (!interaction.isModalSubmit() || !interaction.customId.startsWith(`${COLLECTION_DELETE_MODAL_PREFIX}|`)) {
             return;
         }
@@ -223,6 +243,28 @@ module.exports = {
         deleteSession(sessionId);
     }
 };
+
+async function buildCollectionListPayload(databaseName, sessionId) {
+    const collections = await listCollectionsWithDocumentCounts(databaseName);
+    return {
+        embeds: [
+            createStatusEmbed({
+                title: `Collections in ${databaseName}`,
+                description: collections.length
+                    ? collections.map(entry => `- \`${entry.name}\` (${entry.documentCount} ${entry.documentCount === 1 ? "document" : "documents"})`).join("\n")
+                    : "No visible collections were found."
+            })
+        ],
+        components: [
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(makeCustomId(COLLECTION_LIST_REFRESH_PREFIX, sessionId))
+                    .setLabel("Refresh")
+                    .setStyle(ButtonStyle.Secondary)
+            )
+        ]
+    };
+}
 
 function buildDeleteModal(sessionId, databaseName, collectionName) {
     return new ModalBuilder()

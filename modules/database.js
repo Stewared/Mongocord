@@ -1,4 +1,7 @@
 const {
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     LabelBuilder,
     ModalBuilder,
     SlashCommandBuilder,
@@ -10,10 +13,11 @@ const { replyPrivately } = require("../lib/access");
 const { makeCustomId, parseCustomId } = require("../lib/customIds");
 const { addPrivateOption, createStatusEmbed, shorten, withSafeMentions } = require("../lib/discordViews");
 const { respond } = require("../lib/interactions");
-const { listDatabaseNames } = require("../lib/mongoAdmin");
+const { listDatabaseNames, listDatabasesWithCollectionCounts } = require("../lib/mongoAdmin");
 const { createSession, deleteSession, getSession } = require("../lib/sessions");
 
 const DATABASE_DELETE_MODAL_PREFIX = "databaseDeleteModal";
+const DATABASE_LIST_REFRESH_PREFIX = "databaseListRefresh";
 
 function addDatabaseOption(option, name = "database", description = "Database name") {
     return option
@@ -75,7 +79,7 @@ module.exports = {
             )
     },
 
-    subscribedCustomIds: [/^databaseDeleteModal\|/],
+    subscribedCustomIds: [/^databaseDeleteModal\|/, /^databaseListRefresh\|/],
 
     async autocomplete(interaction) {
         const focused = interaction.options.getFocused(true);
@@ -147,22 +151,37 @@ module.exports = {
         }
 
         if (subcommand === "list") {
-            const names = await listDatabaseNames();
+            const sessionId = createSession("databaseListView", {
+                ownerId: interaction.user.id,
+                private: isPrivate
+            });
+
             await respond(interaction, {
-                embeds: [
-                    createStatusEmbed({
-                        title: "Visible Databases",
-                        description: names.length
-                            ? names.map(name => `- \`${name}\``).join("\n")
-                            : "No databases were visible to the current Mongo connection."
-                    })
-                ],
+                ...await buildDatabaseListPayload(sessionId),
                 ephemeral: isPrivate
             });
         }
     },
 
     async onbutton(interaction) {
+        if (interaction.isButton() && interaction.customId.startsWith(`${DATABASE_LIST_REFRESH_PREFIX}|`)) {
+            const [, sessionId] = parseCustomId(interaction.customId);
+            const session = getSession(sessionId, "databaseListView");
+
+            if (!session) {
+                await replyPrivately(interaction, "That database list view expired. Run /database list again.");
+                return;
+            }
+
+            if (session.ownerId !== interaction.user.id) {
+                await replyPrivately(interaction, "Only the original requester can refresh this database list.");
+                return;
+            }
+
+            await interaction.update(await buildDatabaseListPayload(sessionId));
+            return;
+        }
+
         if (!interaction.isModalSubmit() || !interaction.customId.startsWith(`${DATABASE_DELETE_MODAL_PREFIX}|`)) {
             return;
         }
@@ -207,6 +226,28 @@ module.exports = {
         deleteSession(sessionId);
     }
 };
+
+async function buildDatabaseListPayload(sessionId) {
+    const databases = await listDatabasesWithCollectionCounts();
+    return {
+        embeds: [
+            createStatusEmbed({
+                title: "Visible Databases",
+                description: databases.length
+                    ? databases.map(entry => `- \`${entry.name}\` (${entry.collectionCount} ${entry.collectionCount === 1 ? "collection" : "collections"})`).join("\n")
+                    : "No databases were visible to the current Mongo connection."
+            })
+        ],
+        components: [
+            new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(makeCustomId(DATABASE_LIST_REFRESH_PREFIX, sessionId))
+                    .setLabel("Refresh")
+                    .setStyle(ButtonStyle.Secondary)
+            )
+        ]
+    };
+}
 
 async function cloneDatabase(sourceName, targetName) {
     if (sourceName === targetName) {
